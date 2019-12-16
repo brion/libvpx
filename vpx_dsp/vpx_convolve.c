@@ -19,6 +19,22 @@
 #include "vpx_dsp/vpx_filter.h"
 #include "vpx_ports/mem.h"
 
+#ifdef __wasm_simd128__
+#include "wasm_simd128.h"
+
+INLINE v128_t clip_pixel_i32x4(v128_t val) {
+  return wasm_v128_bitselect(
+    wasm_i32x4_splat(0),
+    wasm_v128_bitselect(
+      wasm_i32x4_splat(255),
+      val,
+      wasm_i32x4_gt(val, wasm_i32x4_splat(255))
+    ),
+    wasm_i32x4_lt(val, wasm_i32x4_splat(0))
+  );
+}
+#endif
+
 static void convolve_horiz(const uint8_t *src, ptrdiff_t src_stride,
                            uint8_t *dst, ptrdiff_t dst_stride,
                            const InterpKernel *x_filters, int x0_q4,
@@ -64,6 +80,45 @@ static void convolve_avg_horiz(const uint8_t *src, ptrdiff_t src_stride,
   }
 }
 
+#ifdef __wasm_simd128__
+static void convolve_vert(const uint8_t *src, ptrdiff_t src_stride,
+                          uint8_t *dst, ptrdiff_t dst_stride,
+                          const InterpKernel *y_filters, int y0_q4,
+                          int y_step_q4, int w, int h) {
+  int x, y;
+  src -= src_stride * (SUBPEL_TAPS / 2 - 1);
+  assert(w >= 4);
+
+  for (x = 0; x < w; x += 4) {
+    int y_q4 = y0_q4;
+    for (y = 0; y < h; ++y) {
+      const uint8_t *src_y = &src[(y_q4 >> SUBPEL_BITS) * src_stride];
+      const int16_t *const y_filter = y_filters[y_q4 & SUBPEL_MASK];
+      int k;
+      v128_t sum_v = wasm_i32x4_splat(64); // for rounding
+      for (k = 0; k < SUBPEL_TAPS; ++k) {
+        const v128_t src_v = wasm_i32x4_widen_low_i16x8(
+                              wasm_i16x8_widen_low_u8x16(
+                               wasm_v128_load(&src_y[k * src_stride])));
+        const v128_t filter_v = wasm_i32x4_splat(y_filter[k]);
+        const v128_t mul_v = wasm_i32x4_mul(src_v, filter_v);
+        sum_v = wasm_i32x4_add(sum_v, mul_v);
+      }
+      // dst[y * dst_stride] = clip_pixel(ROUND_POWER_OF_TWO(sum, FILTER_BITS));
+      // round is: (((sum) + (1 << ((7)-1))) >> (7))
+      const v128_t pixel_v = wasm_i32x4_shr(sum_v, 7);
+      const v128_t clipped_v = clip_pixel_i32x4(pixel_v);
+      dst[y * dst_stride] = wasm_i32x4_extract_lane(clipped_v, 0);
+      dst[y * dst_stride + 1] = wasm_i32x4_extract_lane(clipped_v, 1);
+      dst[y * dst_stride + 2] = wasm_i32x4_extract_lane(clipped_v, 2);
+      dst[y * dst_stride + 3] = wasm_i32x4_extract_lane(clipped_v, 3);
+      y_q4 += y_step_q4;
+    }
+    src += 4;
+    dst += 4;
+  }
+}
+#else
 static void convolve_vert(const uint8_t *src, ptrdiff_t src_stride,
                           uint8_t *dst, ptrdiff_t dst_stride,
                           const InterpKernel *y_filters, int y0_q4,
@@ -86,6 +141,7 @@ static void convolve_vert(const uint8_t *src, ptrdiff_t src_stride,
     ++dst;
   }
 }
+#endif
 
 static void convolve_avg_vert(const uint8_t *src, ptrdiff_t src_stride,
                               uint8_t *dst, ptrdiff_t dst_stride,
