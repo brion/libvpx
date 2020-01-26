@@ -182,10 +182,9 @@ static void convolve_avg_vert(const uint8_t *src, ptrdiff_t src_stride,
         ),
         1
       );
-      dst[y * dst_stride] = wasm_i32x4_extract_lane(avg_v, 0);
-      dst[y * dst_stride + 1] = wasm_i32x4_extract_lane(avg_v, 1);
-      dst[y * dst_stride + 2] = wasm_i32x4_extract_lane(avg_v, 2);
-      dst[y * dst_stride + 3] = wasm_i32x4_extract_lane(avg_v, 3);
+      const v128_t pixel16_v = wasm_i16x8_narrow_i32x4(avg_v, avg_v);
+      const v128_t pixel8_v = wasm_u8x16_narrow_i16x8(pixel16_v, pixel16_v);
+      *(int32_t *)&dst[y * dst_stride] = wasm_i32x4_extract_lane(pixel8_v, 0);
       y_q4 += y_step_q4;
     }
     src += 4;
