@@ -104,12 +104,10 @@ static void convolve_vert(const uint8_t *src, ptrdiff_t src_stride,
       }
       // dst[y * dst_stride] = clip_pixel(ROUND_POWER_OF_TWO(sum, FILTER_BITS));
       // round is: (((sum) + (1 << ((7)-1))) >> (7))
-      const v128_t pixel_v = wasm_i32x4_shr(sum_v, 7);
-      const v128_t clipped_v = clip_pixel_i32x4(pixel_v);
-      dst[y * dst_stride] = wasm_i32x4_extract_lane(clipped_v, 0);
-      dst[y * dst_stride + 1] = wasm_i32x4_extract_lane(clipped_v, 1);
-      dst[y * dst_stride + 2] = wasm_i32x4_extract_lane(clipped_v, 2);
-      dst[y * dst_stride + 3] = wasm_i32x4_extract_lane(clipped_v, 3);
+      v128_t pixel_v = wasm_i32x4_shr(sum_v, 7);
+      pixel_v = wasm_i16x8_narrow_i32x4(pixel_v, pixel_v);
+      pixel_v = wasm_u8x16_narrow_i16x8(pixel_v, pixel_v);
+      *(int32_t *)&dst[y * dst_stride] = wasm_i32x4_extract_lane(pixel_v, 0);
       y_q4 += y_step_q4;
     }
     src += 4;
