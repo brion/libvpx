@@ -23,14 +23,12 @@
 #include "wasm_simd128.h"
 
 INLINE v128_t clip_pixel_i32x4(v128_t val) {
-  return wasm_v128_bitselect(
+  return wasm_i32x4_max_s(
     wasm_i32x4_splat(0),
-    wasm_v128_bitselect(
+    wasm_i32x4_min_s(
       wasm_i32x4_splat(255),
-      val,
-      wasm_i32x4_gt(val, wasm_i32x4_splat(255))
-    ),
-    wasm_i32x4_lt(val, wasm_i32x4_splat(0))
+      val
+    )
   );
 }
 #endif
