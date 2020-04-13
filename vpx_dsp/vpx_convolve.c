@@ -23,9 +23,9 @@
 #include "wasm_simd128.h"
 
 INLINE v128_t clip_pixel_i32x4(v128_t val) {
-  return wasm_i32x4_max_s(
+  return wasm_i32x4_max(
     wasm_i32x4_splat(0),
-    wasm_i32x4_min_s(
+    wasm_i32x4_min(
       wasm_i32x4_splat(255),
       val
     )
